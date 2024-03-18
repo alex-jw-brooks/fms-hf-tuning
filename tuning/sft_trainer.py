@@ -215,6 +215,26 @@ def train(
         model=model,
     )
 
+    # Configure the collator and validate args related to packing prior to formatting the dataset
+    if train_args.packing:
+        logger.info("Packing is set to True")
+        data_collator = None
+        packing = True
+    else:
+        logger.info("Packing is set to False")
+        if data_args.response_template is None:
+            # TODO: Fix this, currently unreachable due to crashing in batch encoding tokenization
+            # We should do this validation up front, then do the encoding, then handle the collator
+            raise ValueError("Response template is None, needs to be set for training")
+        if data_args.dataset_text_field is None:
+            raise ValueError("Dataset_text_field is None, needs to be set for training")
+        data_collator = DataCollatorForCompletionOnlyLM(
+            response_template_ids,
+            tokenizer=tokenizer,
+            ignore_index=configs.IGNORE_INDEX,
+        )
+        packing = False
+
     # load the data by parsing JSON
     # TODO: update arg from data_path to training_data_path since we also have validation_data_path
     data_files = {"train": data_args.data_path}
@@ -241,31 +261,6 @@ def train(
     file_logger_callback = FileLoggingCallback(logger)
     peft_saving_callback = PeftSavingCallback()
     callbacks = [aim_callback, peft_saving_callback, file_logger_callback]
-
-    if train_args.packing:
-        logger.info("Packing is set to True")
-        data_collator = None
-        packing = True
-    else:
-        logger.info("Packing is set to False")
-        if data_args.response_template is None:
-            logger.error(
-                "Error, response template is None, needs to be set for training"
-            )
-            sys.exit(-1)
-
-        if data_args.dataset_text_field is None:
-            logger.error(
-                "Error, dataset_text_field is None, needs to be set for training"
-            )
-            sys.exit(-1)
-
-        data_collator = DataCollatorForCompletionOnlyLM(
-            response_template_ids,
-            tokenizer=tokenizer,
-            ignore_index=configs.IGNORE_INDEX,
-        )
-        packing = False
 
     trainer = SFTTrainer(
         model=model,
